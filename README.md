@@ -65,3 +65,7 @@ src/
   wallet approval (MetaMask / WalletConnect) per tx.
 - Default chain is BSC **Testnet** (97). Use a wallet funded only with testnet
   tBNB unless you have deliberately switched modes.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
