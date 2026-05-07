@@ -16,6 +16,7 @@ import { LiveTrades } from './components/LiveTrades'
 import { TradeAlerts } from './components/TradeAlerts'
 import { PortfolioTracker } from './components/PortfolioTracker'
 import { TradingSignals } from './components/TradingSignals'
+import { DailyTrades } from './components/DailyTrades'
 import { useLivePrice } from './hooks/useLivePrice'
 import { useTheme } from './hooks/useTheme'
 import { ThemeToggle } from './components/ThemeToggle'
@@ -105,6 +106,9 @@ function Dashboard() {
 
         {/* ── Whale Alerts / Order Book Heatmap ── */}
         <TradeAlerts />
+
+        {/* ── Daily Donchian Bot (paper) ── */}
+        <DailyTrades />
 
         {/* ── Wallet Info + Balances (when connected) ── */}
         {isConnected && (
