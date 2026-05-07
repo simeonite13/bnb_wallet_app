@@ -57,6 +57,18 @@ src/
     ConnectButton.tsx, ThemeToggle.tsx
 ```
 
+## Backend (Daily Strategy bot)
+
+The `DailyTrades` card is fed by a separate Python service —
+[`bnb_trading_bot`](https://github.com/simeonite13/bnb_trading_bot) (private).
+It computes a daily signal (Donchian breakout, or LLM-based via Claude),
+records it in SQLite, and serves the results over HTTP at `127.0.0.1:8055`.
+
+In dev, vite proxies `/bnb_wallet_app/api/bot/*` to that port — so the bot
+must be running locally for `DailyTrades` to populate (e.g. via the
+`bnb-api.service` user systemd unit). On the GitHub Pages build there is no
+backend, so that card will show a network error.
+
 ## Safety notes
 
 - Connection is wallet-based only — the app **never** asks for, stores, or
