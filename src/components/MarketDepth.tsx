@@ -35,31 +35,36 @@ const T = {
 
 async function fetchDepth(limit = 100): Promise<OrderBook> {
   const r = await fetch(
-    `https://api.binance.com/api/v3/depth?symbol=BNBUSDT&limit=${limit}`,
+    `/api/okx/api/v5/market/books?instId=BNB-USDT&sz=${limit}`,
     { signal: AbortSignal.timeout(8000) }
   )
-  if (!r.ok) throw new Error(`Binance ${r.status}`)
+  if (!r.ok) throw new Error(`OKX ${r.status}`)
   const d = await r.json()
+  if (d.code !== '0' || !d.data?.[0]) throw new Error(`OKX ${d.code}: ${d.msg || 'no data'}`)
+  const book = d.data[0]
   return {
-    bids: (d.bids as string[][]).map(([p, q]) => [+p, +q] as [number, number]).sort((a, b) => b[0] - a[0]),
-    asks: (d.asks as string[][]).map(([p, q]) => [+p, +q] as [number, number]).sort((a, b) => a[0] - b[0]),
+    bids: (book.bids as string[][]).map(([p, q]) => [+p, +q] as [number, number]).sort((a, b) => b[0] - a[0]),
+    asks: (book.asks as string[][]).map(([p, q]) => [+p, +q] as [number, number]).sort((a, b) => a[0] - b[0]),
     fetchedAt: Date.now(),
   }
 }
 
 async function fetchKlines(days: number): Promise<Kline[]> {
-  const cfg: Record<number, { interval: string; limit: number }> = {
-    1: { interval: '30m', limit: 48 },
-    7: { interval: '4h',  limit: 42 },
-    30:{ interval: '1d',  limit: 30 },
+  const cfg: Record<number, { bar: string; limit: number }> = {
+    1: { bar: '30m', limit: 48 },
+    7: { bar: '4H',  limit: 42 },
+    30:{ bar: '1D',  limit: 30 },
   }
-  const { interval, limit } = cfg[days]
+  const { bar, limit } = cfg[days]
   const r = await fetch(
-    `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=${interval}&limit=${limit}`,
+    `/api/okx/api/v5/market/candles?instId=BNB-USDT&bar=${bar}&limit=${limit}`,
     { signal: AbortSignal.timeout(8000) }
   )
-  if (!r.ok) throw new Error(`Binance ${r.status}`)
-  const raw: string[][] = await r.json()
+  if (!r.ok) throw new Error(`OKX ${r.status}`)
+  const d = await r.json()
+  if (d.code !== '0') throw new Error(`OKX ${d.code}: ${d.msg || 'no data'}`)
+  // OKX candles: [ts, open, high, low, close, vol_base, vol_quote, _, confirm], newest first → reverse
+  const raw: string[][] = (d.data as string[][]).slice().reverse()
   return raw.map(k => ({ low: +k[3], high: +k[2], close: +k[4], volume: +k[5] }))
 }
 
@@ -446,7 +451,7 @@ export function MarketDepth() {
         <div className="depth-legend">
           <span><span className="depth-dot" style={{ background: '#22c55e' }} />Bids (buy orders)</span>
           <span><span className="depth-dot" style={{ background: '#ef4444' }} />Asks (sell orders)</span>
-          <span className="muted">BNBUSDT · Binance · top 100 levels</span>
+          <span className="muted">BNB-USDT · OKX · top 100 levels</span>
         </div>
       )}
 

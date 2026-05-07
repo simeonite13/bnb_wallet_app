@@ -10,10 +10,10 @@ import {
 type Range     = '1D' | '7D' | '30D'
 type Indicator = 'RSI' | 'MACD'
 
-const RANGE_CONFIG: Record<Range, { interval: string; limit: number }> = {
-  '1D':  { interval: '30m', limit: 48  },
-  '7D':  { interval: '4h',  limit: 42  },
-  '30D': { interval: '1d',  limit: 30  },
+const RANGE_CONFIG: Record<Range, { bar: string; limit: number }> = {
+  '1D':  { bar: '30m', limit: 48  },
+  '7D':  { bar: '4H',  limit: 42  },
+  '30D': { bar: '1D',  limit: 30  },
 }
 
 interface Candle {
@@ -37,15 +37,18 @@ const EMA_COLOR: Record<EmaPeriod, string> = {
 // ── Data fetching ──────────────────────────────────────────────────────────────
 
 async function fetchKlines(range: Range): Promise<Candle[]> {
-  const { interval, limit } = RANGE_CONFIG[range]
+  const { bar, limit } = RANGE_CONFIG[range]
   const res = await fetch(
-    `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=${interval}&limit=${limit}`,
+    `/api/okx/api/v5/market/candles?instId=BNB-USDT&bar=${bar}&limit=${limit}`,
     { signal: AbortSignal.timeout(10_000) }
   )
-  if (!res.ok) throw new Error(`Binance ${res.status}`)
-  const raw: [number, string, string, string, string, string][] = await res.json()
+  if (!res.ok) throw new Error(`OKX ${res.status}`)
+  const json = await res.json()
+  if (json.code !== '0') throw new Error(`OKX ${json.code}: ${json.msg || 'no data'}`)
+  // OKX: [ts, open, high, low, close, vol_base, ...], newest first → reverse
+  const raw: string[][] = (json.data as string[][]).slice().reverse()
   return raw.map(([ms, o, h, l, c, v]) => ({
-    time: Math.floor(ms / 1000) as UTCTimestamp,
+    time: Math.floor(+ms / 1000) as UTCTimestamp,
     open: +o, high: +h, low: +l, close: +c, volume: +v,
   }))
 }
@@ -424,7 +427,7 @@ export function PriceChart() {
       {/* ── Header ── */}
       <div className="chart-header">
         <div className="chart-title-group">
-          <h2 style={{ marginBottom: 4 }}>BNB / USDT — Binance</h2>
+          <h2 style={{ marginBottom: 4 }}>BNB / USDT — OKX</h2>
           <div className="chart-ohlc-row">
             {last && (
               <>
@@ -546,7 +549,7 @@ export function PriceChart() {
       </div>
 
       <p className="footnote">
-        Binance BNBUSDT · 1D=30m · 7D=4h · 30D=1d · EMA calculated on close prices
+        OKX BNB-USDT · 1D=30m · 7D=4H · 30D=1D · EMA calculated on close prices
       </p>
     </div>
   )

@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 
 interface Trade {
-  id: number
+  id: string
   time: number
   price: number
   qty: number
-  isSell: boolean   // m=true → buyer is maker → sell aggressor
+  isSell: boolean   // taker side === "Sell"
 }
 
 type WsStatus = 'connecting' | 'open' | 'closed' | 'error'
 
 const MAX_TRADES = 100
 const VISIBLE    = 30
-const WS_URL     = 'wss://stream.binance.com:9443/ws/bnbusdt@trade'
+const WS_PROTO   = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+const WS_HOST    = typeof window !== 'undefined' ? window.location.host : ''
+const WS_URL     = `${WS_PROTO}//${WS_HOST}/api/bybit-ws/v5/public/spot`
+const TOPIC      = 'publicTrade.BNBUSDT'
+const PING_MS    = 20_000
 
 function fmt(n: number, dec: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -25,9 +29,10 @@ function timeStr(ms: number) {
 export function LiveTrades() {
   const [trades,    setTrades]   = useState<Trade[]>([])
   const [status,    setStatus]   = useState<WsStatus>('connecting')
-  const [flashIds,  setFlashIds] = useState<Set<number>>(new Set())
+  const [flashIds,  setFlashIds] = useState<Set<string>>(new Set())
   const wsRef       = useRef<WebSocket | null>(null)
   const retryRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pingRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const mountedRef  = useRef(true)
 
   useEffect(() => {
@@ -39,29 +44,38 @@ export function LiveTrades() {
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
 
-      ws.onopen = () => { if (mountedRef.current) setStatus('open') }
+      ws.onopen = () => {
+        if (!mountedRef.current) return
+        setStatus('open')
+        ws.send(JSON.stringify({ op: 'subscribe', args: [TOPIC] }))
+        pingRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 'ping' }))
+        }, PING_MS)
+      }
 
       ws.onmessage = (evt) => {
         if (!mountedRef.current) return
         try {
-          const d = JSON.parse(evt.data as string)
-          const trade: Trade = {
-            id:     d.t,
+          const msg = JSON.parse(evt.data as string)
+          if (msg.topic !== TOPIC || !Array.isArray(msg.data)) return
+          const newTrades: Trade[] = msg.data.map((d: { i: string; T: number; p: string; v: string; S: string }) => ({
+            id:     d.i,
             time:   d.T,
             price:  parseFloat(d.p),
-            qty:    parseFloat(d.q),
-            isSell: d.m,       // buyer is maker → aggressive sell
-          }
-          setTrades(prev => [trade, ...prev].slice(0, MAX_TRADES))
+            qty:    parseFloat(d.v),
+            isSell: d.S === 'Sell',
+          }))
+          if (newTrades.length === 0) return
+          setTrades(prev => [...newTrades.reverse(), ...prev].slice(0, MAX_TRADES))
           setFlashIds(prev => {
             const next = new Set(prev)
-            next.add(trade.id)
+            for (const t of newTrades) next.add(t.id)
             return next
           })
           setTimeout(() => {
             setFlashIds(prev => {
               const next = new Set(prev)
-              next.delete(trade.id)
+              for (const t of newTrades) next.delete(t.id)
               return next
             })
           }, 400)
@@ -71,6 +85,7 @@ export function LiveTrades() {
       ws.onerror = () => { if (mountedRef.current) setStatus('error') }
 
       ws.onclose = () => {
+        if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null }
         if (!mountedRef.current) return
         setStatus('closed')
         retryRef.current = setTimeout(connect, 3000)
@@ -80,6 +95,7 @@ export function LiveTrades() {
     connect()
     return () => {
       mountedRef.current = false
+      if (pingRef.current) clearInterval(pingRef.current)
       wsRef.current?.close()
       if (retryRef.current) clearTimeout(retryRef.current)
     }
@@ -119,7 +135,7 @@ export function LiveTrades() {
           <span className={statusClass[status]} title={statusLabel[status]} />
           <span className="muted" style={{ fontSize: 11 }}>{statusLabel[status]}</span>
         </div>
-        <span className="muted" style={{ fontSize: 11 }}>BNBUSDT · Binance</span>
+        <span className="muted" style={{ fontSize: 11 }}>BNBUSDT · Bybit</span>
       </div>
 
       {/* Buy / Sell pressure bar */}

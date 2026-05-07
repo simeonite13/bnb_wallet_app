@@ -41,18 +41,22 @@ export function useLivePrice(): LivePrice {
         return
       } catch { /* fall through to Binance */ }
 
-      // Fallback: Binance public API
+      // Fallback: OKX public ticker
       try {
         const res = await window.fetch(
-          'https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT',
+          '/api/okx/api/v5/market/ticker?instId=BNB-USDT',
           { signal: AbortSignal.timeout(8000) }
         )
-        if (!res.ok) throw new Error('Binance non-OK')
+        if (!res.ok) throw new Error('OKX non-OK')
         const json = await res.json()
+        const t = json?.data?.[0]
+        if (!t) throw new Error('OKX no data')
+        const last   = parseFloat(t.last)
+        const open24 = parseFloat(t.open24h)
         if (!cancelRef.current) {
           setData({
-            usd: parseFloat(json.lastPrice),
-            change24h: parseFloat(json.priceChangePercent),
+            usd: last,
+            change24h: open24 ? ((last - open24) / open24) * 100 : null,
             loading: false,
             lastUpdated: new Date(),
           })

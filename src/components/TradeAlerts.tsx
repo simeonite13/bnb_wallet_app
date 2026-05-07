@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface WhaleAlert {
-  id: number
+  id: string
   time: number
   price: number
   qty: number
@@ -23,9 +23,16 @@ const TIERS: Tier[] = [
   { min:  50_000, emoji: '🐳', label: 'Whale', color: '#a78bfa' },
   { min:  10_000, emoji: '🦈', label: 'Shark', color: '#60a5fa' },
 ]
-const MAX_ALERTS = 60
-const MAX_SNAPS  = 200
-const DEPTH_LVL  = 20
+const MAX_ALERTS  = 60
+const MAX_SNAPS   = 200
+const DEPTH_LVL   = 20
+const SAMPLE_MS   = 100
+const WS_PROTO    = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+const WS_HOST     = typeof window !== 'undefined' ? window.location.host : ''
+const WS_URL      = `${WS_PROTO}//${WS_HOST}/api/bybit-ws/v5/public/spot`
+const TRADE_TOPIC = 'publicTrade.BNBUSDT'
+const DEPTH_TOPIC = 'orderbook.50.BNBUSDT'
+const PING_MS     = 20_000
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -156,25 +163,36 @@ export function TradeAlerts() {
   const [alerts,      setAlerts]      = useState<WhaleAlert[]>([])
   const [tradeStatus, setTradeStatus] = useState<WsStatus>('connecting')
   const [heatStatus,  setHeatStatus]  = useState<WsStatus>('connecting')
-  const [flashIds,    setFlashIds]    = useState<Set<number>>(new Set())
+  const [flashIds,    setFlashIds]    = useState<Set<string>>(new Set())
 
   const heatCanvas  = useRef<HTMLCanvasElement>(null)
   const historyRef  = useRef<Snapshot[]>([])
   const dirtyRef    = useRef(false)
   const rafRef      = useRef<number>(0)
 
-  // ── Whale alerts: trades stream ────────────────────────────────────────────
+  // ── Whale alerts: trades stream (Bybit publicTrade) ────────────────────────
   useEffect(() => {
-    let ws: WebSocket, retryId: ReturnType<typeof setTimeout>, alive = true
+    let ws: WebSocket
+    let retryId: ReturnType<typeof setTimeout>
+    let pingId: ReturnType<typeof setInterval> | null = null
+    let alive = true
 
     function connect() {
       if (!alive) return
       setTradeStatus('connecting')
-      ws = new WebSocket('wss://stream.binance.com:9443/ws/bnbusdt@trade')
+      ws = new WebSocket(WS_URL)
 
-      ws.onopen  = () => { if (alive) setTradeStatus('open') }
+      ws.onopen  = () => {
+        if (!alive) return
+        setTradeStatus('open')
+        ws.send(JSON.stringify({ op: 'subscribe', args: [TRADE_TOPIC] }))
+        pingId = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 'ping' }))
+        }, PING_MS)
+      }
       ws.onerror = () => { if (alive) setTradeStatus('error') }
       ws.onclose = () => {
+        if (pingId) { clearInterval(pingId); pingId = null }
         if (!alive) return
         setTradeStatus('closed')
         retryId = setTimeout(connect, 3000)
@@ -183,39 +201,77 @@ export function TradeAlerts() {
       ws.onmessage = (evt) => {
         if (!alive) return
         try {
-          const d   = JSON.parse(evt.data as string)
-          const usd = parseFloat(d.p) * parseFloat(d.q)
-          const tier = getTier(usd)
-          if (!tier) return
-
-          const alert: WhaleAlert = {
-            id: d.t, time: d.T,
-            price: parseFloat(d.p), qty: parseFloat(d.q),
-            usd, isSell: d.m, tier,
+          const msg = JSON.parse(evt.data as string)
+          if (msg.topic !== TRADE_TOPIC || !Array.isArray(msg.data)) return
+          for (const d of msg.data as { i: string; T: number; p: string; v: string; S: string }[]) {
+            const price = parseFloat(d.p)
+            const qty   = parseFloat(d.v)
+            const usd   = price * qty
+            const tier  = getTier(usd)
+            if (!tier) continue
+            const alert: WhaleAlert = {
+              id: d.i, time: d.T, price, qty, usd, isSell: d.S === 'Sell', tier,
+            }
+            setAlerts(prev => [alert, ...prev].slice(0, MAX_ALERTS))
+            setFlashIds(prev => new Set([...prev, alert.id]))
+            setTimeout(() => setFlashIds(prev => { const s = new Set(prev); s.delete(alert.id); return s }), 600)
           }
-          setAlerts(prev => [alert, ...prev].slice(0, MAX_ALERTS))
-          setFlashIds(prev => new Set([...prev, alert.id]))
-          setTimeout(() => setFlashIds(prev => { const s = new Set(prev); s.delete(alert.id); return s }), 600)
         } catch { /* noop */ }
       }
     }
 
     connect()
-    return () => { alive = false; ws?.close(); clearTimeout(retryId) }
+    return () => { alive = false; if (pingId) clearInterval(pingId); ws?.close(); clearTimeout(retryId) }
   }, [])
 
-  // ── Heatmap: depth stream ──────────────────────────────────────────────────
+  // ── Heatmap: depth stream (Bybit orderbook.50, snapshot + delta) ───────────
   useEffect(() => {
-    let ws: WebSocket, retryId: ReturnType<typeof setTimeout>, alive = true
+    let ws: WebSocket
+    let retryId: ReturnType<typeof setTimeout>
+    let pingId: ReturnType<typeof setInterval> | null = null
+    let alive = true
+    const bids = new Map<number, number>()
+    const asks = new Map<number, number>()
+    let lastSample = 0
+
+    function applySide(side: Map<number, number>, entries: string[][]) {
+      for (const [p, q] of entries) {
+        const price = +p
+        const qty   = +q
+        if (qty === 0) side.delete(price)
+        else           side.set(price, qty)
+      }
+    }
+
+    function emitSnapshot() {
+      const now = performance.now()
+      if (now - lastSample < SAMPLE_MS) return
+      lastSample = now
+      const top = (m: Map<number, number>, desc: boolean): [number, number][] =>
+        [...m.entries()]
+          .sort((a, b) => desc ? b[0] - a[0] : a[0] - b[0])
+          .slice(0, DEPTH_LVL)
+      historyRef.current = [...historyRef.current, { bids: top(bids, true), asks: top(asks, false) }].slice(-MAX_SNAPS)
+      dirtyRef.current = true
+    }
 
     function connect() {
       if (!alive) return
       setHeatStatus('connecting')
-      ws = new WebSocket(`wss://stream.binance.com:9443/ws/bnbusdt@depth${DEPTH_LVL}@100ms`)
+      bids.clear(); asks.clear()
+      ws = new WebSocket(WS_URL)
 
-      ws.onopen  = () => { if (alive) setHeatStatus('open') }
+      ws.onopen  = () => {
+        if (!alive) return
+        setHeatStatus('open')
+        ws.send(JSON.stringify({ op: 'subscribe', args: [DEPTH_TOPIC] }))
+        pingId = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ op: 'ping' }))
+        }, PING_MS)
+      }
       ws.onerror = () => { if (alive) setHeatStatus('error') }
       ws.onclose = () => {
+        if (pingId) { clearInterval(pingId); pingId = null }
         if (!alive) return
         setHeatStatus('closed')
         retryId = setTimeout(connect, 3000)
@@ -224,19 +280,18 @@ export function TradeAlerts() {
       ws.onmessage = (evt) => {
         if (!alive) return
         try {
-          const d = JSON.parse(evt.data as string)
-          const snap: Snapshot = {
-            bids: (d.b as string[][]).map(([p, q]) => [+p, +q] as [number, number]),
-            asks: (d.a as string[][]).map(([p, q]) => [+p, +q] as [number, number]),
-          }
-          historyRef.current = [...historyRef.current, snap].slice(-MAX_SNAPS)
-          dirtyRef.current = true
+          const msg = JSON.parse(evt.data as string)
+          if (msg.topic !== DEPTH_TOPIC || !msg.data) return
+          if (msg.type === 'snapshot') { bids.clear(); asks.clear() }
+          applySide(bids, msg.data.b ?? [])
+          applySide(asks, msg.data.a ?? [])
+          emitSnapshot()
         } catch { /* noop */ }
       }
     }
 
     connect()
-    return () => { alive = false; ws?.close(); clearTimeout(retryId) }
+    return () => { alive = false; if (pingId) clearInterval(pingId); ws?.close(); clearTimeout(retryId) }
   }, [])
 
   // ── Heatmap RAF render loop ────────────────────────────────────────────────

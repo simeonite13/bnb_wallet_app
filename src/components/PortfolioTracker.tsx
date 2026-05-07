@@ -185,9 +185,9 @@ export function PortfolioTracker() {
 
   // Fetch CAKE price once
   useEffect(() => {
-    fetch('https://api.binance.com/api/v3/ticker/price?symbol=CAKEUSDT', { signal: AbortSignal.timeout(6000) })
+    fetch('/api/kucoin/api/v1/market/orderbook/level1?symbol=CAKE-USDT', { signal: AbortSignal.timeout(6000) })
       .then(r => r.json())
-      .then(d => setCakePrice(parseFloat(d.price)))
+      .then(d => setCakePrice(parseFloat(d?.data?.price ?? '0')))
       .catch(() => { /* use 0 */ })
   }, [])
 

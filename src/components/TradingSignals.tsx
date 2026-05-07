@@ -14,6 +14,7 @@ const SIG_VAL: Record<Signal, number> = {
 interface Indicator { name: string; value: string; signal: Signal; hint: string }
 type TF = '15m' | '1h' | '4h' | '1d'
 const TF_LIMIT: Record<TF, number> = { '15m': 220, '1h': 220, '4h': 220, '1d': 220 }
+const TF_OKX_BAR: Record<TF, string> = { '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D' }
 
 // ── Math ───────────────────────────────────────────────────────────────────────
 
@@ -315,11 +316,14 @@ export function TradingSignals() {
     setLoading(true); setError(null)
     try {
       const res = await fetch(
-        `https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=${tf}&limit=${TF_LIMIT[tf]}`,
+        `/api/okx/api/v5/market/candles?instId=BNB-USDT&bar=${TF_OKX_BAR[tf]}&limit=${TF_LIMIT[tf]}`,
         { signal: AbortSignal.timeout(10_000) }
       )
-      if (!res.ok) throw new Error(`Binance ${res.status}`)
-      const raw: string[][] = await res.json()
+      if (!res.ok) throw new Error(`OKX ${res.status}`)
+      const json = await res.json()
+      if (json.code !== '0') throw new Error(`OKX ${json.code}: ${json.msg || 'no data'}`)
+      // OKX returns newest first → reverse so indicators see chronological order
+      const raw: string[][] = (json.data as string[][]).slice().reverse()
       const candles: Candle[] = raw.map(k => ({
         open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5],
       }))
