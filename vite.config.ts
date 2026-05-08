@@ -5,7 +5,12 @@ export default defineConfig({
   plugins: [react()],
   base: '/bnb_wallet_app/',
   server: {
-    allowedHosts: ['.trycloudflare.com', '.ngrok-free.dev', '.ngrok-free.app', '.ngrok.app'],
+    host: true,
+    allowedHosts: [
+      '.trycloudflare.com', '.ngrok-free.dev', '.ngrok-free.app', '.ngrok.app',
+      '192.168.1.56',     // LAN
+      '100.124.199.77',   // Tailscale
+    ],
     proxy: {
       '/bnb_wallet_app/api/bot': {
         target: 'http://127.0.0.1:8055',
