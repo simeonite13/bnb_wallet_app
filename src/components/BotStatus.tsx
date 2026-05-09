@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react'
 
 type Side = 'buy' | 'sell' | 'hold'
 
-interface Status {
+// /status payload — fields with "?" cover differences between the bnb
+// (older / BNB-specific naming) and flare (generic naming) APIs. Both
+// chains report the same risk knobs and the equity-row shape is
+// normalized below.
+interface RawStatus {
   ok: boolean
+  chain?: string
+  native_symbol?: string
   live_trading?: boolean
-  enable_real_trading: boolean
+  enable_real_trading?: boolean
   max_trade_usdt: number
   max_risk_per_trade?: number
   daily_max_loss?: number
@@ -19,14 +25,15 @@ interface Status {
   latest_trade: {
     ts: string; side: 'buy' | 'sell'; qty_quote: number; price: number; mode: string
   } | null
-  latest_equity: {
-    date: string; equity_usdt: number; cash_usdt: number; position_bnb: number
-  } | null
+  // bnb shape: { equity_usdt, cash_usdt, position_bnb }
+  // flare shape: { equity_quote, cash_quote, position_base }
+  latest_equity: Record<string, unknown> | null
 }
 
-interface EquityRow {
+interface RawEquityRow {
   date: string
-  equity_usdt: number
+  equity_usdt?: number
+  equity_quote?: number
 }
 
 // Compact inline SVG sparkline of recent equity values.
@@ -60,7 +67,6 @@ function Sparkline({ values, height = 38 }: { values: number[]; height?: number 
   )
 }
 
-const API_BASE = '/bnb_wallet_app/api/bot'
 const POLL_MS = 30_000
 
 function sideColor(side: string): string {
@@ -69,9 +75,32 @@ function sideColor(side: string): string {
   return 'var(--muted, #6b7280)'
 }
 
-export function BotStatus() {
-  const [s, setS] = useState<Status | null>(null)
-  const [history, setHistory] = useState<EquityRow[]>([])
+// Pull a numeric field by trying the bnb name, then the flare name.
+function pickNum(row: Record<string, unknown> | null, ...keys: string[]): number | null {
+  if (!row) return null
+  for (const k of keys) {
+    const v = row[k]
+    if (typeof v === 'number') return v
+  }
+  return null
+}
+
+interface BotStatusProps {
+  /** Display title for the card. */
+  title?: string
+  /** Same-origin path to the bot's API root (no trailing slash). */
+  apiBase?: string
+  /** Native asset label for the equity line, e.g. "BNB" or "FLR". */
+  nativeSymbol?: string
+}
+
+export function BotStatus({
+  title = 'Bot Status',
+  apiBase = '/bnb_wallet_app/api/bot',
+  nativeSymbol = 'BNB',
+}: BotStatusProps = {}) {
+  const [s, setS] = useState<RawStatus | null>(null)
+  const [history, setHistory] = useState<RawEquityRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -79,13 +108,13 @@ export function BotStatus() {
     const load = async () => {
       try {
         const [statusRes, eqRes] = await Promise.all([
-          window.fetch(`${API_BASE}/status`, { signal: AbortSignal.timeout(8000) }),
-          window.fetch(`${API_BASE}/equity?limit=30`, { signal: AbortSignal.timeout(8000) }),
+          window.fetch(`${apiBase}/status`, { signal: AbortSignal.timeout(8000) }),
+          window.fetch(`${apiBase}/equity?limit=30`, { signal: AbortSignal.timeout(8000) }),
         ])
         if (!statusRes.ok) throw new Error(`status ${statusRes.status}`)
         if (!eqRes.ok) throw new Error(`equity ${eqRes.status}`)
-        const data = (await statusRes.json()) as Status
-        const eqRows = (await eqRes.json()) as EquityRow[]
+        const data = (await statusRes.json()) as RawStatus
+        const eqRows = (await eqRes.json()) as RawEquityRow[]
         if (!cancelled) { setS(data); setHistory(eqRows); setError(null) }
       } catch (e) {
         if (!cancelled) setError((e as Error).message)
@@ -94,12 +123,12 @@ export function BotStatus() {
     load()
     const id = setInterval(load, POLL_MS)
     return () => { cancelled = true; clearInterval(id) }
-  }, [])
+  }, [apiBase])
 
   if (error && !s) {
     return (
       <div className="card">
-        <h2>Bot Status</h2>
+        <h2>{title}</h2>
         <p style={{ color: 'var(--red)' }}>● offline — {error}</p>
       </div>
     )
@@ -107,7 +136,7 @@ export function BotStatus() {
   if (!s) {
     return (
       <div className="card">
-        <h2>Bot Status</h2>
+        <h2>{title}</h2>
         <p className="muted">Loading…</p>
       </div>
     )
@@ -117,7 +146,7 @@ export function BotStatus() {
   const tr = s.latest_trade
   const eq = s.latest_equity
 
-  const liveOn = s.live_trading ?? s.enable_real_trading
+  const liveOn = s.live_trading ?? s.enable_real_trading ?? false
   const realLabel = liveOn ? 'ON · live trading' : 'OFF · paper-only'
   const realColor = liveOn ? 'var(--red)' : 'var(--green)'
 
@@ -125,11 +154,19 @@ export function BotStatus() {
   const dailyPct = s.daily_max_loss ?? 0
   const manual   = s.require_manual_approval ?? false
 
+  const equityVal = pickNum(eq, 'equity_usdt', 'equity_quote')
+  const cashVal   = pickNum(eq, 'cash_usdt', 'cash_quote')
+  const baseVal   = pickNum(eq, 'position_bnb', 'position_base')
+
   const tsStr = (iso: string) => iso.slice(0, 16).replace('T', ' ')
+
+  const sparkline = history
+    .map(r => r.equity_usdt ?? r.equity_quote)
+    .filter((v): v is number => typeof v === 'number')
 
   return (
     <div className="card">
-      <h2>Bot Status</h2>
+      <h2>{title}</h2>
       <div
         style={{
           display: 'grid',
@@ -169,7 +206,7 @@ export function BotStatus() {
                 {sig.side.toUpperCase()}
               </span>
               {' · '}{sig.date}{' · '}${sig.close.toLocaleString(undefined, {
-                maximumFractionDigits: 2,
+                maximumFractionDigits: 4,
               })}
             </>
           ) : (
@@ -194,11 +231,12 @@ export function BotStatus() {
 
         <span className="muted">Equity</span>
         <span>
-          {eq ? (
+          {equityVal !== null ? (
             <>
-              ${eq.equity_usdt.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              ${equityVal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               {' '}<span className="muted" style={{ fontSize: 11 }}>
-                paper · cash ${eq.cash_usdt.toFixed(2)} · BNB {eq.position_bnb.toFixed(4)}
+                paper{cashVal !== null && <> · cash ${cashVal.toFixed(2)}</>}
+                {baseVal !== null && <> · {nativeSymbol} {baseVal.toFixed(4)}</>}
               </span>
             </>
           ) : (
@@ -218,16 +256,16 @@ export function BotStatus() {
         </span>
       </div>
 
-      {history.length >= 2 && (
+      {sparkline.length >= 2 && (
         <div style={{ marginTop: 12 }}>
           <div className="muted" style={{ fontSize: 11, marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
-            <span>Equity (last {history.length} days)</span>
+            <span>Equity (last {sparkline.length} days)</span>
             <span>
-              ${history[0].equity_usdt.toFixed(2)} → ${history[history.length - 1].equity_usdt.toFixed(2)}
-              {' '}({((history[history.length - 1].equity_usdt / history[0].equity_usdt - 1) * 100).toFixed(2)}%)
+              ${sparkline[0].toFixed(2)} → ${sparkline[sparkline.length - 1].toFixed(2)}
+              {' '}({((sparkline[sparkline.length - 1] / sparkline[0] - 1) * 100).toFixed(2)}%)
             </span>
           </div>
-          <Sparkline values={history.map(r => r.equity_usdt)} />
+          <Sparkline values={sparkline} />
         </div>
       )}
     </div>

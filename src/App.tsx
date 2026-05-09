@@ -115,8 +115,19 @@ function Dashboard() {
         {/* ── Whale Alerts / Order Book Heatmap ── */}
         <TradeAlerts />
 
-        {/* ── Bot status + daily strategy ── */}
-        <BotStatus />
+        {/* ── Bot status (BNB + Flare side-by-side) + daily strategy ── */}
+        <div className="row-2">
+          <BotStatus
+            title="BNB Bot · BSC"
+            apiBase="/bnb_wallet_app/api/bot"
+            nativeSymbol="BNB"
+          />
+          <BotStatus
+            title="Flare Bot · FLR"
+            apiBase="/bnb_wallet_app/api/flare"
+            nativeSymbol="FLR"
+          />
+        </div>
         <DailyTrades />
 
         {/* ── Wallet Info + Balances (when connected) ── */}

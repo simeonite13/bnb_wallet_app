@@ -17,6 +17,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/bnb_wallet_app\/api\/bot/, ''),
       },
+      '/bnb_wallet_app/api/flare': {
+        target: 'http://127.0.0.1:8056',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/bnb_wallet_app\/api\/flare/, ''),
+      },
       '/api/okx': {
         target: 'https://www.okx.com',
         changeOrigin: true,
