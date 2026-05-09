@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { BSCSCAN_TESTNET, BSCSCAN_TESTNET_API } from '../constants'
+import { useChainAssets } from '../hooks/useChainAssets'
 
 interface Tx {
   hash: string
@@ -18,10 +18,10 @@ function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
 }
 
-function formatValue(wei: string) {
+function formatValue(wei: string, symbol: string) {
   const bnb = Number(wei) / 1e18
-  if (bnb === 0) return '0 tBNB'
-  return `${bnb.toFixed(6)} tBNB`
+  if (bnb === 0) return `0 ${symbol}`
+  return `${bnb.toFixed(6)} ${symbol}`
 }
 
 function timeAgo(ts: string) {
@@ -34,6 +34,8 @@ function timeAgo(ts: string) {
 
 export function TxHistory() {
   const { address, isConnected } = useAccount()
+  const { explorer, explorerApi, isMainnet, networkLabel } = useChainAssets()
+  const nativeSymbol = isMainnet ? 'BNB' : 'tBNB'
   const [txs, setTxs] = useState<Tx[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +48,7 @@ export function TxHistory() {
     setError(null)
 
     window.fetch(
-      `${BSCSCAN_TESTNET_API}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=15&sort=desc&apikey=YourApiKeyToken`
+      `${explorerApi}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=15&sort=desc&apikey=YourApiKeyToken`
     )
       .then(r => r.json())
       .then(data => {
@@ -67,7 +69,7 @@ export function TxHistory() {
       })
 
     return () => { cancelled = true }
-  }, [address])
+  }, [address, explorerApi])
 
   if (!isConnected) return null
 
@@ -77,7 +79,7 @@ export function TxHistory() {
         <h2>Transaction History</h2>
         {address && (
           <a
-            href={`${BSCSCAN_TESTNET}/address/${address}`}
+            href={`${explorer}/address/${address}`}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-text"
@@ -101,13 +103,13 @@ export function TxHistory() {
 
       {error && !loading && (
         <p className="form-error" style={{ marginTop: 8 }}>
-          ⚠ {error} — <a href={`${BSCSCAN_TESTNET}/address/${address}`} target="_blank" rel="noopener noreferrer" className="link-accent">View on BSCScan ↗</a>
+          ⚠ {error} — <a href={`${explorer}/address/${address}`} target="_blank" rel="noopener noreferrer" className="link-accent">View on BSCScan ↗</a>
         </p>
       )}
 
       {!loading && !error && txs.length === 0 && (
         <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
-          No transactions found on BNB Testnet yet.
+          No transactions found on BNB {networkLabel} yet.
         </p>
       )}
 
@@ -126,7 +128,7 @@ export function TxHistory() {
             return (
               <div key={tx.hash} className={`tx-row ${success ? '' : 'tx-row-err'}`}>
                 <a
-                  href={`${BSCSCAN_TESTNET}/tx/${tx.hash}`}
+                  href={`${explorer}/tx/${tx.hash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mono tx-hash-link"
@@ -137,7 +139,7 @@ export function TxHistory() {
                 <span className={`tx-direction ${isIn ? 'tx-in' : 'tx-out'}`}>
                   {isIn ? '↓ IN' : '↑ OUT'}
                 </span>
-                <span className="mono">{formatValue(tx.value)}</span>
+                <span className="mono">{formatValue(tx.value, nativeSymbol)}</span>
                 <span className={success ? 'tx-ok' : 'tx-fail'}>
                   {success ? '✓' : '✗'}
                 </span>
@@ -148,7 +150,7 @@ export function TxHistory() {
         </div>
       )}
 
-      <p className="footnote">Last 15 transactions · BNB Testnet</p>
+      <p className="footnote">Last 15 transactions · BNB {networkLabel}</p>
     </div>
   )
 }

@@ -1,7 +1,6 @@
-import { useAccount, useBalance, useReadContracts, useChainId } from 'wagmi'
+import { useAccount, useBalance, useReadContracts } from 'wagmi'
 import { erc20Abi, formatUnits } from 'viem'
-import { bscTestnet } from 'wagmi/chains'
-import { BSC_TOKENS } from '../constants'
+import { useChainAssets } from '../hooks/useChainAssets'
 
 function fmt(value: string, decimals = 4): string {
   const n = Number(value)
@@ -12,15 +11,15 @@ function fmt(value: string, decimals = 4): string {
 
 export function TokenBalances() {
   const { address, isConnected } = useAccount()
-  const chainId = useChainId()
-  const onCorrectChain = chainId === bscTestnet.id
+  const { erc20Tokens, isMainnet, isTestnet } = useChainAssets()
+  const onSupportedChain = isMainnet || isTestnet
 
   const { data: bnb, isLoading: bnbLoading } = useBalance({
     address,
-    query: { enabled: isConnected && onCorrectChain },
+    query: { enabled: isConnected && onSupportedChain },
   })
 
-  const contracts = BSC_TOKENS.map((t) => ({
+  const contracts = erc20Tokens.map((t) => ({
     address: t.address,
     abi: erc20Abi,
     functionName: 'balanceOf' as const,
@@ -29,11 +28,11 @@ export function TokenBalances() {
 
   const { data: tokenData, isLoading: tokensLoading } = useReadContracts({
     contracts,
-    query: { enabled: isConnected && onCorrectChain && !!address },
+    query: { enabled: isConnected && onSupportedChain && !!address },
   })
 
   if (!isConnected) return null
-  if (!onCorrectChain) return null
+  if (!onSupportedChain) return null
 
   const isLoading = bnbLoading || tokensLoading
 
@@ -43,7 +42,7 @@ export function TokenBalances() {
 
       <div className="balance-row">
         <div className="token-info">
-          <span className="token-symbol">BNB</span>
+          <span className="token-symbol">{bnb?.symbol ?? (isTestnet ? 'tBNB' : 'BNB')}</span>
           <span className="token-label">Native</span>
         </div>
         <span className="balance-value mono">
@@ -53,7 +52,7 @@ export function TokenBalances() {
 
       <div className="divider" />
 
-      {BSC_TOKENS.map((token, i) => {
+      {erc20Tokens.map((token, i) => {
         const result = tokenData?.[i]
         const raw = result?.status === 'success' ? (result.result as bigint) : null
         const balance =

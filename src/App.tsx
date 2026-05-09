@@ -1,7 +1,8 @@
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from './wagmi'
-import { useAccount } from 'wagmi'
+import { useAccount, useChainId } from 'wagmi'
+import { bsc, bscTestnet } from 'wagmi/chains'
 import { ConnectButton } from './components/ConnectButton'
 import { WalletInfo } from './components/WalletInfo'
 import { SecurityBanner } from './components/SecurityBanner'
@@ -37,11 +38,17 @@ export default function App() {
 
 function Dashboard() {
   const { isConnected } = useAccount()
+  const chainId = useChainId()
   const { usd, change24h } = useLivePrice()
   const { theme, toggle } = useTheme()
 
   const isUp = (change24h ?? 0) >= 0
   const changeColor = isUp ? 'var(--green)' : 'var(--red)'
+
+  const isMainnet = chainId === bsc.id
+  const isTestnet = chainId === bscTestnet.id
+  const chainLabel = isMainnet ? 'Mainnet' : isTestnet ? 'Testnet' : 'BNB Chain'
+  const chainBadgeClass = isMainnet ? 'badge-mainnet' : 'badge-testnet'
 
   return (
     <div className="app">
@@ -51,7 +58,7 @@ function Dashboard() {
           <span className="logo">⬡</span>
           <div>
             <h1>BNB Trading Dashboard</h1>
-            <p className="tagline">BSC Testnet · Paper & Real Mode · No private keys</p>
+            <p className="tagline">BNB Smart Chain · Paper & Real Mode · No private keys</p>
           </div>
         </div>
 
@@ -69,7 +76,7 @@ function Dashboard() {
               )}
             </div>
           )}
-          <span className="badge badge-testnet">Testnet</span>
+          <span className={`badge ${chainBadgeClass}`}>{chainLabel}</span>
         </div>
 
         <ThemeToggle theme={theme} toggle={toggle} />
@@ -135,7 +142,7 @@ function Dashboard() {
 
       <footer className="footer">
         <p>
-          BNB Chain Testnet (Chain ID 97) · WalletConnect + MetaMask ·
+          BNB Smart Chain · Mainnet (56) + Testnet (97) · Reown / MetaMask ·
           All transactions require manual wallet confirmation · No private keys ever requested
         </p>
       </footer>

@@ -1,7 +1,6 @@
-import { useAccount, useBalance, useReadContracts, useChainId } from 'wagmi'
+import { useAccount, useBalance, useReadContracts } from 'wagmi'
 import { erc20Abi, formatUnits } from 'viem'
-import { bscTestnet } from 'wagmi/chains'
-import { TESTNET_TOKENS, BSC_TOKENS, BSCSCAN_TESTNET, FAUCET_URL } from '../constants'
+import { useChainAssets } from '../hooks/useChainAssets'
 import { useLivePrice } from '../hooks/useLivePrice'
 
 function fmt(val: string, dec = 4) {
@@ -12,6 +11,7 @@ function fmt(val: string, dec = 4) {
 }
 
 const TOKEN_ICONS: Record<string, string> = {
+  BNB: '⬡',
   tBNB: '⬡',
   USDT: '$',
   BUSD: 'B',
@@ -21,16 +21,16 @@ const TOKEN_ICONS: Record<string, string> = {
 
 export function TokenBalanceCards() {
   const { address, isConnected } = useAccount()
-  const chainId = useChainId()
-  const onTestnet = chainId === bscTestnet.id
+  const { tokens: chainTokens, erc20Tokens, explorer, faucetUrl, isMainnet, isTestnet } = useChainAssets()
+  const onSupportedChain = isMainnet || isTestnet
   const { usd: bnbPrice } = useLivePrice()
 
   const { data: bnb, isLoading: bnbLoading } = useBalance({
     address,
-    query: { enabled: isConnected && onTestnet },
+    query: { enabled: isConnected && onSupportedChain },
   })
 
-  const contracts = BSC_TOKENS.map(t => ({
+  const contracts = erc20Tokens.map(t => ({
     address: t.address,
     abi: erc20Abi,
     functionName: 'balanceOf' as const,
@@ -39,17 +39,17 @@ export function TokenBalanceCards() {
 
   const { data: tokenData, isLoading: tokensLoading } = useReadContracts({
     contracts,
-    query: { enabled: isConnected && onTestnet && !!address },
+    query: { enabled: isConnected && onSupportedChain && !!address },
   })
 
   if (!isConnected) return null
-  if (!onTestnet) return (
+  if (!onSupportedChain) return (
     <div className="card">
-      <p className="chain-warning">⚠ Switch wallet to BNB Testnet (Chain ID 97) to see balances.</p>
+      <p className="chain-warning">⚠ Switch wallet to BNB Smart Chain (Mainnet 56 or Testnet 97) to see balances.</p>
     </div>
   )
 
-  const tokens = TESTNET_TOKENS.map((t, i) => {
+  const tokens = chainTokens.map((t) => {
     if (t.address === 'native') {
       return {
         ...t,
@@ -58,7 +58,7 @@ export function TokenBalanceCards() {
         usdValue: bnbPrice && bnb ? parseFloat(bnb.formatted) * bnbPrice : null,
       }
     }
-    const erc20Idx = BSC_TOKENS.findIndex(b => b.symbol === t.symbol)
+    const erc20Idx = erc20Tokens.findIndex(b => b.symbol === t.symbol)
     const result = tokenData?.[erc20Idx]
     const raw = result?.status === 'success' ? (result.result as bigint) : null
     const balance = raw !== null ? formatUnits(raw, t.decimals) : null
@@ -77,7 +77,7 @@ export function TokenBalanceCards() {
       <div className="section-header">
         <h2 className="section-title">Token Balances</h2>
         <a
-          href={`${BSCSCAN_TESTNET}/address/${address}`}
+          href={`${explorer}/address/${address}`}
           target="_blank"
           rel="noopener noreferrer"
           className="btn-text"
@@ -117,10 +117,16 @@ export function TokenBalanceCards() {
       </div>
 
       <p className="footnote">
-        Testnet balances · Get test BNB at{' '}
-        <a href={FAUCET_URL} target="_blank" rel="noopener noreferrer" className="link-accent">
-          BNB Testnet Faucet ↗
-        </a>
+        {isMainnet ? 'Mainnet balances · Real funds — every send is irreversible.' : (
+          <>
+            Testnet balances · Get test BNB at{' '}
+            {faucetUrl && (
+              <a href={faucetUrl} target="_blank" rel="noopener noreferrer" className="link-accent">
+                BNB Testnet Faucet ↗
+              </a>
+            )}
+          </>
+        )}
       </p>
     </div>
   )

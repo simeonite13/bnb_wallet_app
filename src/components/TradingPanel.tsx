@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useAccount,
   useBalance,
@@ -6,7 +6,7 @@ import {
   useWriteContract,
 } from 'wagmi'
 import { parseEther, parseUnits, isAddress, erc20Abi } from 'viem'
-import { TESTNET_TOKENS, BSC_TOKENS } from '../constants'
+import { useChainAssets } from '../hooks/useChainAssets'
 import { useLivePrice } from '../hooks/useLivePrice'
 import { usePaperTrading } from '../hooks/usePaperTrading'
 import { TxConfirmModal } from './TxConfirmModal'
@@ -233,18 +233,27 @@ function PaperTradingPanel() {
 
 // ── Real Trading ───────────────────────────────────────────────────────────────
 
-type TokenOption =
-  | { symbol: 'tBNB'; address: 'native'; decimals: 18 }
-  | (typeof BSC_TOKENS)[number]
-
-const TOKEN_OPTIONS: TokenOption[] = [
-  { symbol: 'tBNB', address: 'native', decimals: 18 },
-  ...BSC_TOKENS,
-]
+type TokenOption = {
+  symbol: string
+  address: `0x${string}` | 'native'
+  decimals: number
+}
 
 function RealTradingPanel() {
   const { address } = useAccount()
-  const [token, setToken] = useState<TokenOption>(TOKEN_OPTIONS[0])
+  const { tokens: chainTokens, isMainnet, networkLabel } = useChainAssets()
+
+  const tokenOptions: TokenOption[] = useMemo(() => {
+    const nativeSym = isMainnet ? 'BNB' : 'tBNB'
+    const native: TokenOption = { symbol: nativeSym, address: 'native', decimals: 18 }
+    const erc20s: TokenOption[] = chainTokens
+      .filter(t => t.address !== 'native')
+      .map(t => ({ symbol: t.symbol, address: t.address, decimals: t.decimals }))
+    return [native, ...erc20s]
+  }, [chainTokens, isMainnet])
+
+  const [tokenSymbol, setTokenSymbol] = useState<string>(tokenOptions[0].symbol)
+  const token = tokenOptions.find(t => t.symbol === tokenSymbol) ?? tokenOptions[0]
   const [recipient, setRecipient] = useState('')
   const [amount, setAmount] = useState('')
   const [showWarning, setShowWarning] = useState(false)
@@ -295,7 +304,7 @@ function RealTradingPanel() {
   return (
     <div>
       <div className="real-mode-banner">
-        ⚠ <strong>Real Mode</strong> — BNB Testnet only · Every action requires MetaMask confirmation
+        ⚠ <strong>Real Mode</strong> — BNB {networkLabel}{isMainnet ? ' · REAL FUNDS' : ''} · Every action requires MetaMask confirmation
       </div>
 
       {/* Token */}
@@ -304,13 +313,10 @@ function RealTradingPanel() {
         <select
           className="form-select"
           value={token.symbol}
-          onChange={e => {
-            const found = TOKEN_OPTIONS.find(t => t.symbol === e.target.value)
-            if (found) setToken(found)
-          }}
+          onChange={e => setTokenSymbol(e.target.value)}
           disabled={isPending}
         >
-          {TOKEN_OPTIONS.map(t => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
+          {tokenOptions.map(t => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
         </select>
         {balance && (
           <span className="form-hint">

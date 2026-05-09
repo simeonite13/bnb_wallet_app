@@ -1,0 +1,131 @@
+//@version=5
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// Opening Range Breakout (ORB) — 30-min OR + Volume Surge + VWAP filter
+// ─────────────────────────────────────────────────────────────────────────────
+// Long-side breakout signal that fires only when ALL of the following hold:
+//
+//   1. Price closes above the 09:30–10:00 ET opening range high.
+//   2. Current bar volume >= configurable multiplier (default 1.5x) of the
+//      AVERAGE bar volume measured over the opening range.
+//   3. Close is above the session VWAP.
+//   4. Bar falls within the first two hours of the regular session
+//      (10:00–11:30 ET, i.e. after the OR closes and before the cutoff).
+//
+// Run this on intraday timeframes (1m / 5m / 15m). Higher TFs may not have
+// enough bars inside the OR window to be meaningful.
+//
+// All time gates are evaluated in America/New_York so the indicator works
+// correctly regardless of the chart's display timezone, and DST is handled
+// automatically.
+// ─────────────────────────────────────────────────────────────────────────────
+
+indicator("ORB + Volume + VWAP", shorttitle="ORB",
+          overlay=true, max_lines_count=50)
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+volMultInput  = input.float(1.5, title="Volume multiplier (× OR avg)",
+                            minval=1.0, step=0.1, group="Signal")
+walletBalance = input.float(0.0, title="Wallet balance (for alert payload)",
+                            minval=0.0, step=10.0, group="Alert",
+                            tooltip="Numeric value embedded in the alert() JSON. " +
+                                    "Pine cannot read your real wallet — set this manually.")
+showOrLine    = input.bool(true,  title="Draw OR-high line",     group="Visuals")
+showBreakout  = input.bool(true,  title="Mark breakout bars",    group="Visuals")
+shadeBg       = input.bool(true,  title="Shade background on signal", group="Visuals")
+
+// US Eastern timezone — anchors all session windows below.
+TZ = "America/New_York"
+
+// ─── Session windows ─────────────────────────────────────────────────────────
+// Pine's `time(period, session, tz)` returns the bar's time when the bar's
+// open falls inside the session, otherwise `na`. `not na(...)` flattens that
+// to a boolean we can use as a gate.
+inOR       = not na(time(timeframe.period, "0930-1000", TZ))   // 09:30–10:00
+inTradeWin = not na(time(timeframe.period, "0930-1130", TZ))   // 09:30–11:30
+afterOR    = inTradeWin and not inOR                           // 10:00–11:30
+
+// ─── State: opening-range high & average bar volume (per session) ───────────
+var float orHigh   = na    // highest high seen during the OR
+var float volSum   = 0.0   // running sum of OR bar volumes
+var int   volBars  = 0     // running count of OR bars
+var float orAvgVol = na    // finalized once OR closes
+var line  orLine   = na    // horizontal line drawn at orHigh
+
+// First bar of the OR for this session — reset all per-day state.
+if inOR and not inOR[1]
+    orHigh   := high
+    volSum   := volume
+    volBars  := 1
+    orAvgVol := na
+    if not na(orLine)
+        line.delete(orLine)
+        orLine := na
+
+// Subsequent bars inside the OR — accumulate.
+else if inOR
+    orHigh  := math.max(orHigh, high)
+    volSum  += volume
+    volBars += 1
+
+// First bar AFTER the OR closes — finalize stats and draw the line.
+if not inOR and inOR[1]
+    orAvgVol := volBars > 0 ? volSum / volBars : na
+    if showOrLine and not na(orHigh)
+        orLine := line.new(bar_index, orHigh, bar_index + 1, orHigh,
+                           color=color.new(color.orange, 0), width=2,
+                           extend=extend.right)
+
+// ─── VWAP (resets every session by default) ─────────────────────────────────
+vwapVal = ta.vwap(hlc3)
+
+// ─── Signal conditions ───────────────────────────────────────────────────────
+priceBreakout = afterOR and not na(orHigh)   and close  > orHigh
+volSurge      = afterOR and not na(orAvgVol) and volume >= orAvgVol * volMultInput
+aboveVWAP     = not na(vwapVal) and close > vwapVal
+
+// All four conditions must hold for a signal. `afterOR` already enforces the
+// "before 11:30 ET" cutoff, so no separate clock check is needed.
+signal = priceBreakout and volSurge and aboveVWAP and afterOR
+
+// ─── Visuals ─────────────────────────────────────────────────────────────────
+// Green up-triangle above the breakout bar.
+plotshape(showBreakout and signal, title="Breakout",
+          style=shape.triangleup, location=location.abovebar,
+          color=color.new(color.green, 0), size=size.small)
+
+// Light-green background tint when the signal fires.
+bgcolor(shadeBg and signal ? color.new(color.green, 85) : na,
+        title="Breakout background")
+
+// Hidden plot so the OR high is visible in the data window / for debugging.
+plot(orHigh,   title="OR high",      color=color.new(color.orange, 100),
+     display=display.data_window)
+plot(orAvgVol, title="OR avg volume", color=color.new(color.blue,   100),
+     display=display.data_window)
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+// Two alert paths — pick whichever you prefer in TradingView's UI:
+//
+//  (A) `alert()` with a dynamic JSON payload (recommended). Carries the
+//      wallet-balance input value because alertcondition() can't interpolate
+//      arbitrary script variables. To wire up:
+//          Alerts → Create → Condition: "ORB + Volume + VWAP" indicator →
+//          "Any alert() function call" → Once Per Bar Close.
+//
+//  (B) `alertcondition()` — the legacy declarative form, included as a
+//      fallback. Wallet balance is omitted here.
+//
+// `barstate.isconfirmed` keeps the alert from firing on the still-forming
+// live bar and `alert.freq_once_per_bar_close` enforces "once per bar".
+if signal and barstate.isconfirmed
+    payload = '{"symbol":"'        + syminfo.ticker
+            + '","price":'         + str.tostring(close, format.mintick)
+            + ',"time":"'          + str.format_time(time, "yyyy-MM-dd HH:mm:ssZ", TZ)
+            + '","wallet_balance":' + str.tostring(walletBalance, "#.##")
+            + '}'
+    alert(payload, alert.freq_once_per_bar_close)
+
+alertcondition(signal,
+     title="ORB breakout (legacy)",
+     message='ORB breakout {{ticker}} @ {{close}} on {{interval}} ({{time}})')

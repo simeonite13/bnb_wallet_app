@@ -210,6 +210,7 @@ body {
 .badge-green   { background: var(--green-dim); color: var(--green);  border: 1px solid #16533030; }
 .badge-red     { background: var(--red-dim);   color: var(--red);    border: 1px solid #7f1d1d30; }
 .badge-testnet { background: #0d1a2e; color: #60a5fa; border: 1px solid #1e3a5f; }
+.badge-mainnet { background: #2a1d00; color: #F0B90B; border: 1px solid #5c3f00; }
 .badge-paper   { background: #1a1300; color: var(--accent); border: 1px solid var(--warn-border); }
 
 /* ── Connect Button ─────────────────────────────────────────────────── */
@@ -1804,6 +1805,7 @@ body {
 
 /* Hardcoded-colour overrides */
 [data-theme="light"] .badge-testnet { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+[data-theme="light"] .badge-mainnet { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
 [data-theme="light"] .badge-paper   { background: #fef9e7; color: #92400e; border-color: #fde68a; }
 
 [data-theme="light"] .security-banner         { background: #fefce8; border-color: #fde68a; color: #92400e; }

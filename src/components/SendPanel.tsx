@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useAccount,
   useBalance,
@@ -6,23 +6,31 @@ import {
   useWriteContract,
 } from 'wagmi'
 import { parseEther, parseUnits, isAddress, erc20Abi } from 'viem'
-import { BSC_TOKENS } from '../constants'
+import { useChainAssets } from '../hooks/useChainAssets'
 import { TxConfirmModal } from './TxConfirmModal'
 import { TxStatus } from './TxStatus'
 
-type TokenOption =
-  | { symbol: 'BNB'; address: 'native'; decimals: 18 }
-  | (typeof BSC_TOKENS)[number]
-
-const TOKEN_OPTIONS: TokenOption[] = [
-  { symbol: 'BNB', address: 'native', decimals: 18 },
-  ...BSC_TOKENS,
-]
+type TokenOption = {
+  symbol: string
+  address: `0x${string}` | 'native'
+  decimals: number
+}
 
 export function SendPanel() {
   const { address } = useAccount()
+  const { tokens: chainTokens, isMainnet } = useChainAssets()
 
-  const [token, setToken]         = useState<TokenOption>(TOKEN_OPTIONS[0])
+  const tokenOptions: TokenOption[] = useMemo(() => {
+    const nativeSym = isMainnet ? 'BNB' : 'tBNB'
+    const native: TokenOption = { symbol: nativeSym, address: 'native', decimals: 18 }
+    const erc20s: TokenOption[] = chainTokens
+      .filter(t => t.address !== 'native')
+      .map(t => ({ symbol: t.symbol, address: t.address, decimals: t.decimals }))
+    return [native, ...erc20s]
+  }, [chainTokens, isMainnet])
+
+  const [tokenSymbol, setTokenSymbol] = useState<string>(tokenOptions[0].symbol)
+  const token = tokenOptions.find(t => t.symbol === tokenSymbol) ?? tokenOptions[0]
   const [recipient, setRecipient] = useState('')
   const [amount, setAmount]       = useState('')
   const [showConfirm, setShowConfirm] = useState(false)
@@ -124,13 +132,10 @@ export function SendPanel() {
         <select
           className="form-select"
           value={token.symbol}
-          onChange={(e) => {
-            const found = TOKEN_OPTIONS.find((t) => t.symbol === e.target.value)
-            if (found) setToken(found)
-          }}
+          onChange={(e) => setTokenSymbol(e.target.value)}
           disabled={isPending}
         >
-          {TOKEN_OPTIONS.map((t) => (
+          {tokenOptions.map((t) => (
             <option key={t.symbol} value={t.symbol}>
               {t.symbol}
             </option>
