@@ -13,10 +13,14 @@ import {
   DOUGH_LP_TIMELOCK_ADDRESS,
   DOUGH_LP_TIMELOCK_OWNER,
   DOUGH_USDT_POOL_ADDRESS,
-  FLARESCAN,
   FLARE_CHAIN_ID,
   FLARE_DOUGH_ADDRESS,
+  FLARE_USDT_ADDRESS,
   USDT_FLARE_DECIMALS,
+  dexscreenerEmbedUrl,
+  flarescanAddress,
+  flarescanTx,
+  sparkdexSwapUrl,
 } from '../constants'
 import { algebraPoolAbi } from '../abis/algebraPool'
 import { lpTimelockAbi } from '../abis/lpTimelock'
@@ -92,6 +96,22 @@ export function DoughPanel() {
     query: { enabled: !!connected },
   })
 
+  // Pool reserves → TVL. balanceOf the pool for each token, valued at current price.
+  const { data: poolUsdtRaw } = useReadContract({
+    chainId: FLARE_CHAIN_ID,
+    address: FLARE_USDT_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [DOUGH_USDT_POOL_ADDRESS],
+  })
+  const { data: poolDoughRaw } = useReadContract({
+    chainId: FLARE_CHAIN_ID,
+    address: FLARE_DOUGH_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [DOUGH_USDT_POOL_ADDRESS],
+  })
+
   const { data: unlockTime } = useReadContract({
     chainId: FLARE_CHAIN_ID,
     address: DOUGH_LP_TIMELOCK_ADDRESS,
@@ -122,6 +142,22 @@ export function DoughPanel() {
   const mcap = price !== null && totalSupply !== null ? price * totalSupply : null
   const balance = balanceRaw ? Number(formatUnits(balanceRaw, DOUGH_DECIMALS)) : null
   const balanceUsd = balance !== null && price !== null ? balance * price : null
+
+  const poolUsdt  = poolUsdtRaw  ? Number(formatUnits(poolUsdtRaw,  USDT_FLARE_DECIMALS)) : null
+  const poolDough = poolDoughRaw ? Number(formatUnits(poolDoughRaw, DOUGH_DECIMALS))      : null
+  const tvl =
+    poolUsdt !== null && poolDough !== null && price !== null
+      ? poolUsdt + poolDough * price
+      : null
+
+  // Inline buy preview: USDT input → DOUGH output at current spot (no slippage).
+  // Actual trade goes through SparkDEX so users see the real quote + price impact there.
+  const [usdtIn, setUsdtIn] = useState('')
+  const usdtInNum = Number(usdtIn)
+  const doughOut =
+    Number.isFinite(usdtInNum) && usdtInNum > 0 && price !== null && price > 0
+      ? usdtInNum / price
+      : null
 
   // Pending fees in USDT terms (sum both sides for the "is it worth collecting?" hint).
   const pendingUsd =
@@ -196,6 +232,17 @@ export function DoughPanel() {
           )}
         </span>
 
+        <span className="muted">Pool TVL</span>
+        <span>
+          {fmtCompact(tvl)}
+          {poolUsdt !== null && poolDough !== null && (
+            <span className="muted" style={{ fontSize: 11 }}>
+              {' · '}{poolUsdt.toLocaleString(undefined, { maximumFractionDigits: 0 })} USDT
+              {' + '}{poolDough.toLocaleString(undefined, { maximumFractionDigits: 0 })} DOUGH
+            </span>
+          )}
+        </span>
+
         <span className="muted">Your balance</span>
         <span>
           {connected ? (
@@ -247,7 +294,7 @@ export function DoughPanel() {
         </button>
         {txHash && (
           <a
-            href={`${FLARESCAN}/tx/${txHash}`}
+            href={flarescanTx(txHash)}
             target="_blank"
             rel="noreferrer"
             className="muted"
@@ -261,6 +308,100 @@ export function DoughPanel() {
             {writeErr.message.split('\n')[0]}
           </span>
         )}
+      </div>
+
+      {/* ── Buy DOUGH (inline preview, swap on SparkDEX) ───────────────────── */}
+      <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border, #2a2a2a)' }}>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 8, letterSpacing: 0.4 }}>
+          BUY DOUGH WITH USDT
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '0 1 180px' }}>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              placeholder="0.00"
+              value={usdtIn}
+              onChange={(e) => setUsdtIn(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 50px 8px 10px',
+                fontSize: 14,
+                background: 'var(--bg-2, #1a1a1a)',
+                color: 'var(--text, #e5e5e5)',
+                border: '1px solid var(--border, #2a2a2a)',
+                borderRadius: 6,
+                fontFamily: 'inherit',
+              }}
+            />
+            <span
+              className="muted"
+              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12 }}
+            >
+              USDT
+            </span>
+          </div>
+          <span className="muted" aria-hidden style={{ fontSize: 18 }}>→</span>
+          <span style={{ fontSize: 14, minWidth: 120 }}>
+            {doughOut !== null
+              ? <>{doughOut.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="muted" style={{ fontSize: 11 }}>DOUGH</span></>
+              : <span className="muted">— DOUGH</span>}
+          </span>
+          <a
+            className="btn"
+            href={sparkdexSwapUrl(FLARE_USDT_ADDRESS, FLARE_DOUGH_ADDRESS)}
+            target="_blank"
+            rel="noreferrer"
+            style={{ minWidth: 180, textAlign: 'center', textDecoration: 'none' }}
+          >
+            Trade on SparkDEX ↗
+          </a>
+        </div>
+        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+          Preview is spot price only — actual quote, slippage, and price impact happen on SparkDEX.
+        </p>
+      </div>
+
+      {/* ── DexScreener chart ─────────────────────────────────────────────── */}
+      <div style={{ marginTop: 18 }}>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 8, letterSpacing: 0.4 }}>
+          MARKET (DEXSCREENER)
+        </div>
+        <iframe
+          title="DOUGH/USDT chart"
+          src={dexscreenerEmbedUrl(DOUGH_USDT_POOL_ADDRESS)}
+          loading="lazy"
+          style={{
+            width: '100%',
+            height: 380,
+            border: '1px solid var(--border, #2a2a2a)',
+            borderRadius: 8,
+            background: '#0f0f0f',
+          }}
+        />
+      </div>
+
+      {/* ── Block-explorer links ──────────────────────────────────────────── */}
+      <div
+        style={{
+          marginTop: 14,
+          display: 'flex',
+          gap: 14,
+          flexWrap: 'wrap',
+          fontSize: 12,
+        }}
+      >
+        <a href={flarescanAddress(FLARE_DOUGH_ADDRESS)} target="_blank" rel="noreferrer" className="muted">
+          Token contract ↗
+        </a>
+        <a href={flarescanAddress(DOUGH_USDT_POOL_ADDRESS)} target="_blank" rel="noreferrer" className="muted">
+          Pool ↗
+        </a>
+        <a href={flarescanAddress(DOUGH_LP_TIMELOCK_ADDRESS)} target="_blank" rel="noreferrer" className="muted">
+          LP timelock ↗
+        </a>
       </div>
     </div>
   )

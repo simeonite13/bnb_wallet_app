@@ -76,5 +76,18 @@ export const DOUGH_LP_TIMELOCK_OWNER   = '0xA80e1fE3c189F360b88916f9eE398675fB8a
 export const DOUGH_DECIMALS = 18
 export const USDT_FLARE_DECIMALS = 6
 
-// Block explorer for tx links.
+// Block explorer for tx + address links.
 export const FLARESCAN = 'https://flare-explorer.flare.network'
+export const flarescanAddress = (addr: string) => `${FLARESCAN}/address/${addr}`
+export const flarescanTx = (hash: string) => `${FLARESCAN}/tx/${hash}`
+
+// SparkDEX swap UI deep-link. Uniswap-style query params, which is the standard
+// for Algebra-fork UIs. If SparkDEX changes their URL scheme, update here only.
+export const SPARKDEX_SWAP_BASE = 'https://sparkdex.ai/swap'
+export const sparkdexSwapUrl = (inputAddr: string, outputAddr: string) =>
+  `${SPARKDEX_SWAP_BASE}?inputCurrency=${inputAddr}&outputCurrency=${outputAddr}`
+
+// DexScreener embed for the pool. ?embed=1 hides their site chrome so the
+// iframe shows just the candle chart.
+export const dexscreenerEmbedUrl = (poolAddr: string) =>
+  `https://dexscreener.com/flare/${poolAddr}?embed=1&theme=dark&trades=0&info=0`
