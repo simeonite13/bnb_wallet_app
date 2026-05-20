@@ -1,8 +1,11 @@
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from './wagmi'
-import { useAccount, useChainId } from 'wagmi'
+import { useAccount, useChainId, useReadContract } from 'wagmi'
 import { bsc, bscTestnet } from 'wagmi/chains'
+import { DOUGH_USDT_POOL_ADDRESS, FLARE_CHAIN_ID } from './constants'
+import { algebraPoolAbi } from './abis/algebraPool'
+import { usdtPerDough } from './lib/dough'
 import { ConnectButton } from './components/ConnectButton'
 import { WalletInfo } from './components/WalletInfo'
 import { SecurityBanner } from './components/SecurityBanner'
@@ -48,8 +51,22 @@ function Dashboard() {
 
   const isMainnet = chainId === bsc.id
   const isTestnet = chainId === bscTestnet.id
-  const chainLabel = isMainnet ? 'Mainnet' : isTestnet ? 'Testnet' : 'BNB Chain'
-  const chainBadgeClass = isMainnet ? 'badge-mainnet' : 'badge-testnet'
+  const isFlare   = chainId === FLARE_CHAIN_ID
+  const chainLabel = isFlare
+    ? 'Flare'
+    : isMainnet ? 'BSC Mainnet' : isTestnet ? 'BSC Testnet' : 'BNB Chain'
+  const chainBadgeClass = isFlare
+    ? 'badge-mainnet'  // reuse mainnet styling for Flare; create badge-flare later if needed
+    : isMainnet ? 'badge-mainnet' : 'badge-testnet'
+
+  // Header DOUGH ticker — chain-pinned read so it works regardless of connected wallet chain.
+  const { data: doughPoolState } = useReadContract({
+    chainId: FLARE_CHAIN_ID,
+    address: DOUGH_USDT_POOL_ADDRESS,
+    abi: algebraPoolAbi,
+    functionName: 'globalState',
+  })
+  const doughPrice = usdtPerDough(doughPoolState?.[0] as bigint | undefined)
 
   return (
     <div className="app">
@@ -58,12 +75,20 @@ function Dashboard() {
         <div className="header-left">
           <span className="logo">⬡</span>
           <div>
-            <h1>BNB Trading Dashboard</h1>
-            <p className="tagline">BNB Smart Chain · Paper & Real Mode · No private keys</p>
+            <h1>DOUGH Dashboard</h1>
+            <p className="tagline">DOUGH · Flare · SparkDEX · paper-trading BNB & FLR bots</p>
           </div>
         </div>
 
         <div className="header-center">
+          {doughPrice !== null && (
+            <div className="price-ticker">
+              <span className="price-ticker-label">DOUGH</span>
+              <span className="price-ticker-value">
+                ${doughPrice.toLocaleString('en-US', { maximumFractionDigits: 8 })}
+              </span>
+            </div>
+          )}
           {usd !== null && (
             <div className="price-ticker">
               <span className="price-ticker-label">BNB</span>
@@ -87,18 +112,25 @@ function Dashboard() {
       <main className="main">
         <SecurityBanner />
 
+        {/* ── DOUGH (Flare) — the featured asset ── */}
+        <DoughPanel />
+
         {!isConnected && (
           <div className="empty-state">
             <div className="empty-state-icon">⬡</div>
-            <h2>BNB Testnet Trading Dashboard</h2>
-            <p>Connect your wallet to access real-mode trading and live balances.</p>
+            <h2>DOUGH · Flare Dashboard</h2>
+            <p>
+              Price, market cap, pool TVL, buy preview and chart for DOUGH on
+              SparkDEX above. Connect a wallet to see your DOUGH balance and,
+              if you're the LP owner, collect pending fees.
+            </p>
             <p className="muted">
-              Paper trading mode is available without connecting — practice safely first.
+              The BSC paper-trading tools below remain available without connecting.
             </p>
           </div>
         )}
 
-        {/* ── Price + Gas (always visible) ── */}
+        {/* ── Price + Gas (BSC side, always visible) ── */}
         <div className="row-2">
           <PriceDisplay />
           <GasEstimator />
@@ -129,7 +161,6 @@ function Dashboard() {
             nativeSymbol="FLR"
           />
         </div>
-        <DoughPanel />
         <DailyTrades />
 
         {/* ── Wallet Info + Balances (when connected) ── */}
@@ -155,8 +186,8 @@ function Dashboard() {
 
       <footer className="footer">
         <p>
-          BNB Smart Chain · Mainnet (56) + Testnet (97) · Reown / MetaMask ·
-          All transactions require manual wallet confirmation · No private keys ever requested
+          DOUGH on Flare (chain 14, SparkDEX) · BNB Smart Chain Mainnet (56) + Testnet (97) ·
+          Reown / MetaMask · All transactions require manual wallet confirmation · No private keys ever requested
         </p>
       </footer>
     </div>
