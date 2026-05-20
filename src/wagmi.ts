@@ -31,15 +31,18 @@ const flareRpc =
   (import.meta.env.VITE_FLARE_RPC_URL as string | undefined) ||
   'https://flare-api.flare.network/ext/C/rpc'
 
+// Flare is listed FIRST so it is wagmi's default chain — the dashboard is
+// DOUGH-primary, so unconnected viewers and any code that falls back to the
+// default chain should land on Flare, not BSC.
 export const wagmiConfig = createConfig({
-  chains: [bsc, bscTestnet, flare],
+  chains: [flare, bsc, bscTestnet],
   connectors: [
     injected({ target: 'metaMask' }),
     walletConnect({ projectId, metadata: appMeta }),
   ],
   transports: {
+    [flare.id]: http(flareRpc),
     [bsc.id]: http(mainnetRpc),
     [bscTestnet.id]: http(testnetRpc),
-    [flare.id]: http(flareRpc),
   },
 })

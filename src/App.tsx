@@ -49,15 +49,14 @@ function Dashboard() {
   const isUp = (change24h ?? 0) >= 0
   const changeColor = isUp ? 'var(--green)' : 'var(--red)'
 
-  const isMainnet = chainId === bsc.id
-  const isTestnet = chainId === bscTestnet.id
-  const isFlare   = chainId === FLARE_CHAIN_ID
+  const isBscMainnet = chainId === bsc.id
+  const isBscTestnet = chainId === bscTestnet.id
+  // Flare is the dashboard's primary chain; treat it (and any unknown chain) as the default.
+  const isFlare = chainId === FLARE_CHAIN_ID || (!isBscMainnet && !isBscTestnet)
   const chainLabel = isFlare
     ? 'Flare'
-    : isMainnet ? 'BSC Mainnet' : isTestnet ? 'BSC Testnet' : 'BNB Chain'
-  const chainBadgeClass = isFlare
-    ? 'badge-mainnet'  // reuse mainnet styling for Flare; create badge-flare later if needed
-    : isMainnet ? 'badge-mainnet' : 'badge-testnet'
+    : isBscMainnet ? 'BSC Mainnet' : 'BSC Testnet'
+  const chainBadgeClass = isFlare || isBscMainnet ? 'badge-mainnet' : 'badge-testnet'
 
   // Header DOUGH ticker — chain-pinned read so it works regardless of connected wallet chain.
   const { data: doughPoolState } = useReadContract({
