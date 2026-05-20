@@ -34,6 +34,13 @@ import { usdtPerDough } from '../lib/dough'
 
 function fmtUsd(n: number | null, maxDigits = 4): string {
   if (n === null || !isFinite(n)) return '—'
+  // Sub-cent values would round to "$0" with the default 4 digits, which
+  // misrepresents tokens like DOUGH that trade at ~$0.00001. Auto-expand
+  // to keep at least 3 significant digits past the decimal.
+  if (n > 0 && n < 0.01) {
+    const order = Math.floor(Math.log10(n)) // e.g. 0.00001 → -5
+    maxDigits = Math.max(maxDigits, -order + 2)
+  }
   return '$' + n.toLocaleString(undefined, { maximumFractionDigits: maxDigits })
 }
 
