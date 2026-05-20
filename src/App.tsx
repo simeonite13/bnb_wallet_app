@@ -19,6 +19,7 @@ import { PortfolioTracker } from './components/PortfolioTracker'
 import { TradingSignals } from './components/TradingSignals'
 import { DailyTrades } from './components/DailyTrades'
 import { BotStatus } from './components/BotStatus'
+import { DoughPanel } from './components/DoughPanel'
 import { useLivePrice } from './hooks/useLivePrice'
 import { useTheme } from './hooks/useTheme'
 import { ThemeToggle } from './components/ThemeToggle'
@@ -128,6 +129,7 @@ function Dashboard() {
             nativeSymbol="FLR"
           />
         </div>
+        <DoughPanel />
         <DailyTrades />
 
         {/* ── Wallet Info + Balances (when connected) ── */}

@@ -55,3 +55,26 @@ export const BSCSCAN_MAINNET_API = 'https://api.bscscan.com/api'
 
 // Faucet only exists on testnet.
 export const FAUCET_URL = 'https://testnet.bnbchain.org/faucet-smart'
+
+// ── Flare mainnet (Chain ID 14) — for the DOUGH panel ───────────────────────
+export const FLARE_CHAIN_ID = 14 as const
+
+export const FLARE_USDT_ADDRESS  = '0x0B38e83B86d491735fEaa0a791F65c2B99535396' as const
+export const FLARE_DOUGH_ADDRESS = '0x736e97f3c938580FDC186F7AC336fB6b925c4DDB' as const
+
+// SparkDEX (Algebra-protocol) — DOUGH/USDT pool + factory + NPM
+export const SPARKDEX_FACTORY        = '0x805488DaA81c1b9e7C5cE3f1DCeA28F21448EC6A' as const
+export const SPARKDEX_NPM            = '0x49BE8AA6c684b15e0C5450e8Fa0b16Bec1435596' as const
+export const DOUGH_USDT_POOL_ADDRESS = '0x5a480725B08D8a1c133975E4C1204F2bDCe05468' as const
+
+// LPTimelock holds the DOUGH/USDT LP NFT (tokenId 3840). collectAllFeesToOwner
+// is onlyOwner — UI gates the write button on the connected wallet matching this.
+export const DOUGH_LP_TIMELOCK_ADDRESS = '0x7baf8f1b60909bcee3c1c4fd8348ef7b1441c1d1' as const
+export const DOUGH_LP_TIMELOCK_OWNER   = '0xA80e1fE3c189F360b88916f9eE398675fB8a8113' as const
+
+// Pool is sorted token0=USDT (6 dec), token1=DOUGH (18 dec).
+export const DOUGH_DECIMALS = 18
+export const USDT_FLARE_DECIMALS = 6
+
+// Block explorer for tx links.
+export const FLARESCAN = 'https://flare-explorer.flare.network'

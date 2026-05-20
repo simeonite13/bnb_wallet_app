@@ -1,5 +1,5 @@
 import { createConfig, http } from 'wagmi'
-import { bsc, bscTestnet } from 'wagmi/chains'
+import { bsc, bscTestnet, flare } from 'wagmi/chains'
 import { walletConnect, injected } from 'wagmi/connectors'
 
 const projectId = import.meta.env.VITE_WC_PROJECT_ID as string | undefined
@@ -27,8 +27,12 @@ const testnetRpc =
   (import.meta.env.VITE_BSC_RPC_URL as string | undefined) ||
   'https://bsc-testnet-rpc.publicnode.com'
 
+const flareRpc =
+  (import.meta.env.VITE_FLARE_RPC_URL as string | undefined) ||
+  'https://flare-api.flare.network/ext/C/rpc'
+
 export const wagmiConfig = createConfig({
-  chains: [bsc, bscTestnet],
+  chains: [bsc, bscTestnet, flare],
   connectors: [
     injected({ target: 'metaMask' }),
     walletConnect({ projectId, metadata: appMeta }),
@@ -36,5 +40,6 @@ export const wagmiConfig = createConfig({
   transports: {
     [bsc.id]: http(mainnetRpc),
     [bscTestnet.id]: http(testnetRpc),
+    [flare.id]: http(flareRpc),
   },
 })
