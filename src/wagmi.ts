@@ -12,8 +12,8 @@ if (!projectId) {
 }
 
 const appMeta = {
-  name: 'BNB Trading Dashboard',
-  description: 'BNB Chain trading dashboard — paper & real mode, manual approvals only',
+  name: 'DOUGH Dashboard',
+  description: 'DOUGH on Flare — pool stats, LP fees, and BNB paper trading',
   url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
   icons: [],
 }
