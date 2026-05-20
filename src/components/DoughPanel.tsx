@@ -32,12 +32,14 @@ import { lpTimelockAbi } from '../abis/lpTimelock'
 import { nonfungiblePositionManagerAbi } from '../abis/nonfungiblePositionManager'
 import { usdtPerDough } from '../lib/dough'
 
-function fmtUsd(n: number | null, maxDigits = 4): string {
+function fmtUsd(n: number | null, maxDigits = 4, expandBelowCent = true): string {
   if (n === null || !isFinite(n)) return '—'
   // Sub-cent values would round to "$0" with the default 4 digits, which
   // misrepresents tokens like DOUGH that trade at ~$0.00001. Auto-expand
-  // to keep at least 3 significant digits past the decimal.
-  if (n > 0 && n < 0.01) {
+  // to keep at least 3 significant digits past the decimal. Callers that
+  // *want* the rounded display (e.g. negligible pending-fee USD value)
+  // pass expandBelowCent=false.
+  if (expandBelowCent && n > 0 && n < 0.01) {
     const order = Math.floor(Math.log10(n)) // e.g. 0.00001 → -5
     maxDigits = Math.max(maxDigits, -order + 2)
   }
@@ -301,7 +303,7 @@ export function DoughPanel() {
             <>
               {pendingDough?.toFixed(4)} DOUGH{' · '}{pendingUsdt?.toFixed(4)} USDT
               {pendingUsd !== null && (
-                <span className="muted" style={{ fontSize: 11 }}>{' · ≈ '}{fmtUsd(pendingUsd, 2)}</span>
+                <span className="muted" style={{ fontSize: 11 }}>{' · ≈ '}{fmtUsd(pendingUsd, 2, false)}</span>
               )}
             </>
           ) : (
