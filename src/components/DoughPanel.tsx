@@ -9,21 +9,27 @@ import {
 } from 'wagmi'
 import { erc20Abi, formatUnits } from 'viem'
 import {
+  ALGEBRA_MAX_TICK,
+  ALGEBRA_MIN_TICK,
   DOUGH_DECIMALS,
   DOUGH_LP_TIMELOCK_ADDRESS,
   DOUGH_LP_TIMELOCK_OWNER,
+  DOUGH_LP_TOKEN_ID,
   DOUGH_USDT_POOL_ADDRESS,
   FLARE_CHAIN_ID,
   FLARE_DOUGH_ADDRESS,
   FLARE_USDT_ADDRESS,
+  SPARKDEX_NPM,
   USDT_FLARE_DECIMALS,
   dexscreenerEmbedUrl,
   flarescanAddress,
+  flarescanNftInstance,
   flarescanTx,
   sparkdexSwapUrl,
 } from '../constants'
 import { algebraPoolAbi } from '../abis/algebraPool'
 import { lpTimelockAbi } from '../abis/lpTimelock'
+import { nonfungiblePositionManagerAbi } from '../abis/nonfungiblePositionManager'
 import { usdtPerDough } from '../lib/dough'
 
 function fmtUsd(n: number | null, maxDigits = 4): string {
@@ -106,6 +112,32 @@ export function DoughPanel() {
     abi: lpTimelockAbi,
     functionName: 'unlockTime',
   })
+
+  // LP NFT 3840 — SparkDEX UI won't surface it because ownerOf == timelock
+  // contract (not the connected EOA). Pulling it directly so the panel always
+  // shows the underlying position regardless of which wallet is connected.
+  const { data: nftOwner } = useReadContract({
+    chainId: FLARE_CHAIN_ID,
+    address: SPARKDEX_NPM,
+    abi: nonfungiblePositionManagerAbi,
+    functionName: 'ownerOf',
+    args: [DOUGH_LP_TOKEN_ID],
+  })
+  const { data: positionData } = useReadContract({
+    chainId: FLARE_CHAIN_ID,
+    address: SPARKDEX_NPM,
+    abi: nonfungiblePositionManagerAbi,
+    functionName: 'positions',
+    args: [DOUGH_LP_TOKEN_ID],
+  })
+  const positionTickLower = positionData?.[5] as number | undefined
+  const positionTickUpper = positionData?.[6] as number | undefined
+  const positionLiquidity = positionData?.[7] as bigint | undefined
+  const ownedByTimelock =
+    typeof nftOwner === 'string' &&
+    nftOwner.toLowerCase() === DOUGH_LP_TIMELOCK_ADDRESS.toLowerCase()
+  const isFullRange =
+    positionTickLower === ALGEBRA_MIN_TICK && positionTickUpper === ALGEBRA_MAX_TICK
 
   // Pending fees: simulate the owner-only collect() with the owner as msg.sender.
   const {
@@ -269,6 +301,101 @@ export function DoughPanel() {
             <span className="muted">{simLoading ? 'simulating…' : 'none'}</span>
           )}
         </span>
+      </div>
+
+      {/* ── LP position (NFT 3840) — held by timelock, hidden in SparkDEX UI ── */}
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border, #2a2a2a)' }}>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 8, letterSpacing: 0.4 }}>
+          LP POSITION (NFT #{DOUGH_LP_TOKEN_ID.toString()})
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '140px 1fr',
+            rowGap: 6,
+            columnGap: 12,
+            fontSize: 13,
+          }}
+        >
+          <span className="muted">Token ID</span>
+          <span>
+            <a
+              href={flarescanNftInstance(SPARKDEX_NPM, DOUGH_LP_TOKEN_ID)}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'inherit' }}
+            >
+              #{DOUGH_LP_TOKEN_ID.toString()} ↗
+            </a>
+          </span>
+
+          <span className="muted">Held by</span>
+          <span>
+            {nftOwner ? (
+              <>
+                <a
+                  href={flarescanAddress(nftOwner as string)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: 'inherit', fontFamily: 'monospace', fontSize: 12 }}
+                >
+                  {(nftOwner as string).slice(0, 6)}…{(nftOwner as string).slice(-4)} ↗
+                </a>
+                <span
+                  className="muted"
+                  style={{ fontSize: 11, marginLeft: 6 }}
+                  title="The NFT is owned by the LPTimelock contract, not by an EOA. SparkDEX UI iterates positions on the connected wallet, so it never sees this one — by design."
+                >
+                  {ownedByTimelock ? '· timelock (intended)' : '· UNEXPECTED OWNER'}
+                </span>
+              </>
+            ) : (
+              <span className="muted">loading…</span>
+            )}
+          </span>
+
+          <span className="muted">Range</span>
+          <span>
+            {positionTickLower !== undefined && positionTickUpper !== undefined ? (
+              <>
+                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                  [{positionTickLower}, {positionTickUpper}]
+                </span>
+                <span
+                  className="muted"
+                  style={{ fontSize: 11, marginLeft: 8 }}
+                  title="Full-range = always in range; the position never goes out of band on a price move."
+                >
+                  {isFullRange ? '· full-range' : '· narrow'}
+                </span>
+              </>
+            ) : (
+              <span className="muted">loading…</span>
+            )}
+          </span>
+
+          <span className="muted">Liquidity</span>
+          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
+            {positionLiquidity !== undefined
+              ? positionLiquidity.toString()
+              : <span className="muted">loading…</span>}
+          </span>
+
+          <span className="muted">Pool</span>
+          <span>
+            <a
+              href={flarescanAddress(DOUGH_USDT_POOL_ADDRESS)}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'inherit', fontFamily: 'monospace', fontSize: 12 }}
+            >
+              {DOUGH_USDT_POOL_ADDRESS.slice(0, 6)}…{DOUGH_USDT_POOL_ADDRESS.slice(-4)} ↗
+            </a>
+          </span>
+        </div>
+        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+          SparkDEX's "My Positions" page reads <code>ownerOf</code> on the connected wallet — since the NFT lives in the timelock contract, it never appears there. This panel reads it directly.
+        </p>
       </div>
 
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -71,6 +71,10 @@ export const DOUGH_USDT_POOL_ADDRESS = '0x5a480725B08D8a1c133975E4C1204F2bDCe054
 // is onlyOwner — UI gates the write button on the connected wallet matching this.
 export const DOUGH_LP_TIMELOCK_ADDRESS = '0x7baf8f1b60909bcee3c1c4fd8348ef7b1441c1d1' as const
 export const DOUGH_LP_TIMELOCK_OWNER   = '0xA80e1fE3c189F360b88916f9eE398675fB8a8113' as const
+export const DOUGH_LP_TOKEN_ID         = 3840n
+// Algebra MIN/MAX tick constants — a full-range position spans exactly these.
+export const ALGEBRA_MIN_TICK = -887272
+export const ALGEBRA_MAX_TICK =  887272
 
 // Pool is sorted token0=USDT (6 dec), token1=DOUGH (18 dec).
 export const DOUGH_DECIMALS = 18
@@ -80,6 +84,8 @@ export const USDT_FLARE_DECIMALS = 6
 export const FLARESCAN = 'https://flare-explorer.flare.network'
 export const flarescanAddress = (addr: string) => `${FLARESCAN}/address/${addr}`
 export const flarescanTx = (hash: string) => `${FLARESCAN}/tx/${hash}`
+export const flarescanNftInstance = (collection: string, tokenId: bigint | number | string) =>
+  `${FLARESCAN}/token/${collection}/instance/${tokenId}`
 
 // SparkDEX swap UI deep-link. Uniswap-style query params, which is the standard
 // for Algebra-fork UIs. If SparkDEX changes their URL scheme, update here only.
